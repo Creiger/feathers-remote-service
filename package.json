@@ -12,7 +12,8 @@
     "service"
   ],
   "author": "Lukas Hronec",
-  "license": "ISC",
+  "license": "MIT",
+  "homepage": "https://github.com/Creiger/feathers-remote-service",
   "dependencies": {
     "@feathersjs/errors": "^4.5.10",
     "axios": "^0.21.0",
