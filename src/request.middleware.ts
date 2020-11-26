@@ -7,7 +7,7 @@ interface FeathersRequest {
   feathers?: any
 }
 
-export default () => {
+export const remoteRequestMiddleware = () => {
   return (req: Request & FeathersRequest, res: Response, next: NextFunction) => {
     const requestHeader = req.headers[INTERNAL_REQUEST_HEADER.toLowerCase()];
     if (requestHeader && typeof requestHeader === 'string') {
