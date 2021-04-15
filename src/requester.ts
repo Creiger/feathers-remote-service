@@ -13,6 +13,8 @@ import {
 
 export interface IRequestOptions {
   maxRedirects?: any;
+  maxContentLength?: any;
+  maxBodyLength?: any;
   httpAgent?: any;
   httpsAgent?: any;
   params?: any;
@@ -83,7 +85,9 @@ export class Requester {
         ...this.filterParams(params.headers),
         [this.internalRequestHeader]: encodeURI(JSON.stringify(this.filterParams(params))),
       },
-      timeout: params.timeout !== undefined ? params.timeout : this.timeout
+      timeout: params.timeout !== undefined ? params.timeout : this.timeout,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity
     };
     if (data instanceof FormData) {
       requestOptions.headers = data.getHeaders();

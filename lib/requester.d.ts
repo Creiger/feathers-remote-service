@@ -1,5 +1,7 @@
 export interface IRequestOptions {
     maxRedirects?: any;
+    maxContentLength?: any;
+    maxBodyLength?: any;
     httpAgent?: any;
     httpsAgent?: any;
     params?: any;
