@@ -84,6 +84,9 @@ export class Requester {
       headers: {
         ...this.filterParams(params.headers),
         [this.internalRequestHeader]: encodeURI(JSON.stringify(this.filterParams(params))),
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Expires': '0'
       },
       timeout: params.timeout !== undefined ? params.timeout : this.timeout,
       maxContentLength: Infinity,
