@@ -55,13 +55,13 @@ export class Requester {
     this.responseType = options.responseType;
 
     if (options.retry) { axiosRetry(axios, options.retry); }
-    if (options.dnsCache) {
-      dnsCache({
-        enable: true,
-        ttl: options.dnsCache.ttl || 300,
-        cachesize: options.dnsCache.cachesize || 1000
-      });
-    }
+    // if (options.dnsCache) {
+    //   dnsCache({
+    //     enable: true,
+    //     ttl: options.dnsCache.ttl || 300,
+    //     cachesize: options.dnsCache.cachesize || 1000
+    //   });
+    // }
   }
 
   async send (options) {
