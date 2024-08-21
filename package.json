@@ -17,8 +17,9 @@
   "homepage": "https://github.com/Creiger/feathers-remote-service",
   "dependencies": {
     "@feathersjs/errors": "^4.5.17",
-    "axios": "^1.7.2",
-    "axios-retry": "^4.4.1",
+    "axios": "^1.7.4",
+    "axios-retry": "^4.5.0",
+    "dns-cache": "^2.0.0",
     "form-data": "^4.0.0"
   },
   "devDependencies": {

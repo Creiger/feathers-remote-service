@@ -4,6 +4,7 @@ import axios from 'axios';
 import axiosRetry from 'axios-retry';
 import errors from '@feathersjs/errors';
 import FormData from 'form-data';
+import dnsCache from 'dns-cache';
 import {
   DEFAULT_PROTOCOL,
   DEFAULT_TIMEOUT,
@@ -54,6 +55,13 @@ export class Requester {
     this.responseType = options.responseType;
 
     if (options.retry) { axiosRetry(axios, options.retry); }
+    if (options.dnsCache) {
+      dnsCache({
+        enable: true,
+        ttl: options.dnsCache.ttl || 300,
+        cachesize: options.dnsCache.cachesize || 1000
+      });
+    }
   }
 
   async send (options) {
@@ -90,7 +98,7 @@ export class Requester {
       },
       timeout: params.timeout !== undefined ? params.timeout : this.timeout,
       maxContentLength: Infinity,
-      maxBodyLength: Infinity
+      maxBodyLength: Infinity,
     };
     if (data instanceof FormData) {
       requestOptions.headers = data.getHeaders();
@@ -101,11 +109,12 @@ export class Requester {
     if (this.maxRedirects !== undefined) {
       requestOptions.maxRedirects = this.maxRedirects;
     }
-
-    if (this.keepAlive) {
-      requestOptions.httpAgent = new http.Agent({keepAlive: true});
-      requestOptions.httpsAgent = new https.Agent({keepAlive: true});
-    }
+    requestOptions.httpAgent = new http.Agent({
+      keepAlive: this.keepAlive
+    });
+    requestOptions.httpsAgent = new https.Agent({
+      keepAlive: this.keepAlive
+    });
     const httpMethod = AXIOS_HTTP_METHODS[type];
     const args = data ? [url, data, requestOptions] : [url, requestOptions];
     const result = await axios[httpMethod](...args);
