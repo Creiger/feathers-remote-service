@@ -1,6 +1,6 @@
 {
   "name": "feathers-remote-service",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Package for skimming a remote service as local",
   "main": "lib/",
   "scripts": {
@@ -18,8 +18,8 @@
   "dependencies": {
     "@feathersjs/errors": "^4.5.17",
     "axios": "^1.7.4",
+    "axios-cached-dns-resolve": "^3.3.0",
     "axios-retry": "^4.5.0",
-    "dns-lookup-cache": "^1.0.4",
     "form-data": "^4.0.0"
   },
   "devDependencies": {

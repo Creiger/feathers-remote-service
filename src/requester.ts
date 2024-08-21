@@ -4,14 +4,31 @@ import axios from 'axios';
 import axiosRetry from 'axios-retry';
 import errors from '@feathersjs/errors';
 import FormData from 'form-data';
-import dns from 'dns';
-import {lookup} from 'dns-lookup-cache';
+import { registerInterceptor } from 'axios-cached-dns-resolve'
 import {
   DEFAULT_PROTOCOL,
   DEFAULT_TIMEOUT,
   INTERNAL_REQUEST_HEADER,
   AXIOS_HTTP_METHODS
 } from './constants';
+
+const dnsCacheConfig = {
+  disabled: process.env.AXIOS_DNS_DISABLE === 'true',
+  dnsTtlMs: process.env.AXIOS_DNS_CACHE_TTL_MS || 5000, // when to refresh actively used dns entries (5 sec)
+  cacheGraceExpireMultiplier: process.env.AXIOS_DNS_CACHE_EXPIRE_MULTIPLIER || 2, // maximum grace to use entry beyond TTL
+  dnsIdleTtlMs: process.env.AXIOS_DNS_CACHE_IDLE_TTL_MS || 1000 * 60 * 60, // when to remove entry entirely if not being used (1 hour)
+  backgroundScanMs: process.env.AXIOS_DNS_BACKGROUND_SCAN_MS || 2400, // how frequently to scan for expired TTL and refresh (2.4 sec)
+  dnsCacheSize: process.env.AXIOS_DNS_CACHE_SIZE || 100, // maximum number of entries to keep in cache
+  // pino logging options
+  logging: {
+    name: 'axios-cache-dns-resolve',
+    // enabled: true,
+    level: process.env.AXIOS_DNS_LOG_LEVEL || 'info', // default 'info' others trace, debug, info, warn, error, and fatal
+    // timestamp: true,
+    prettyPrint: process.env.NODE_ENV === 'DEBUG' || false,
+    useLevelLabels: true,
+  },
+}
 
 export interface IRequestOptions {
   maxRedirects?: any;
@@ -39,6 +56,7 @@ export class Requester {
   private readonly keepAlive: any;
   private readonly internalRequestHeader: any;
   private readonly responseType: any;
+  private readonly axiosClient: any;
 
 
   constructor (options) {
@@ -56,8 +74,10 @@ export class Requester {
     this.responseType = options.responseType;
 
     if (options.retry) { axiosRetry(axios, options.retry); }
+    this.axiosClient = axios.create();
     if (options.dnsCache) {
-      dns.lookup = lookup;
+      // @ts-ignore
+      this.axiosClient = axios.create(dnsCacheConfig)
     }
   }
 
@@ -114,7 +134,7 @@ export class Requester {
     });
     const httpMethod = AXIOS_HTTP_METHODS[type];
     const args = data ? [url, data, requestOptions] : [url, requestOptions];
-    const result = await axios[httpMethod](...args);
+    const result = await this.axiosClient[httpMethod](...args);
 
     return result.data;
   }
