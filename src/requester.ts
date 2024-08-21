@@ -77,7 +77,8 @@ export class Requester {
     this.axiosClient = axios.create();
     if (options.dnsCache) {
       // @ts-ignore
-      this.axiosClient = axios.create(dnsCacheConfig)
+      this.axiosClient = axios.create(dnsCacheConfig);
+      registerInterceptor(this.axiosClient);
     }
   }
 
