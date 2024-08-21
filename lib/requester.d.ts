@@ -23,7 +23,6 @@ export declare class Requester {
     private readonly keepAlive;
     private readonly internalRequestHeader;
     private readonly responseType;
-    private readonly axiosClient;
     constructor(options: any);
     send(options: any): Promise<any>;
     validateProtocol(value: any): void;
