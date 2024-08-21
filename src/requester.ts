@@ -5,7 +5,7 @@ import axiosRetry from 'axios-retry';
 import errors from '@feathersjs/errors';
 import FormData from 'form-data';
 import dns from 'dns';
-import DnsCache from 'dns-cache';
+import {lookup} from 'dns-lookup-cache';
 import {
   DEFAULT_PROTOCOL,
   DEFAULT_TIMEOUT,
@@ -25,11 +25,6 @@ export interface IRequestOptions {
   headers: any;
   timeout: any;
 }
-
-const dnsCache = new DnsCache({
-  ttl: 300, // Time to live in seconds (5 minutes)
-  capacity: 100, // Max number of DNS entries to cache
-});
 
 export class Requester {
   private readonly protocol: any;
@@ -62,7 +57,7 @@ export class Requester {
 
     if (options.retry) { axiosRetry(axios, options.retry); }
     if (options.dnsCache) {
-      dns.lookup = dnsCache.lookup.bind(dnsCache);
+      dns.lookup = lookup;
     }
   }
 
