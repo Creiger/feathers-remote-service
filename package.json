@@ -1,8 +1,9 @@
 {
   "name": "feathers-remote-service",
-  "version": "1.0.12",
+  "version": "2.0.2",
   "description": "Package for skimming a remote service as local",
   "main": "lib/",
+  "types": "lib/",
   "scripts": {
     "compile": "shx rm -rf lib/ && tsc",
     "prepublish": "npm run compile"

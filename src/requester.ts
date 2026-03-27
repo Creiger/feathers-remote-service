@@ -8,7 +8,6 @@ import {
   DEFAULT_PROTOCOL,
   DEFAULT_TIMEOUT,
   INTERNAL_REQUEST_HEADER,
-  AXIOS_HTTP_METHODS
 } from './constants';
 
 export interface IRequestOptions {
@@ -82,7 +81,7 @@ export class Requester {
       proxy,
       headers: {
         ...this.filterParams(params.headers),
-        [this.internalRequestHeader]: encodeURI(JSON.stringify(this.filterParams(params))),
+        [this.internalRequestHeader]: 'true',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
         'Expires': '0'
@@ -91,9 +90,24 @@ export class Requester {
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
     };
-    if (data instanceof FormData) {
-      requestOptions.headers = data.getHeaders();
+
+    const body: any = {
+      __type: type,
+      __params: this.filterParams(params),
+    };
+
+    if (data !== undefined) {
+      if (data instanceof FormData) {
+        requestOptions.headers = {
+          ...requestOptions.headers,
+          ...data.getHeaders(),
+        };
+        body.__data = data;
+      } else {
+        body.__data = data;
+      }
     }
+
     if (this.responseType) {
       requestOptions.responseType = this.responseType;
     }
@@ -106,9 +120,7 @@ export class Requester {
     requestOptions.httpsAgent = new https.Agent({
       keepAlive: this.keepAlive
     });
-    const httpMethod = AXIOS_HTTP_METHODS[type];
-    const args = data ? [url, data, requestOptions] : [url, requestOptions];
-    const result = await axios[httpMethod](...args);
+    const result = await axios.post(url, body, requestOptions);
 
     return result.data;
   }
