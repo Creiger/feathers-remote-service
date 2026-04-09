@@ -45,7 +45,7 @@ export class Requester {
     this.pathToHost = options.pathToHost === true ? this.getHostByPath : options.pathToHost;
     this.timeout = options.timeout || DEFAULT_TIMEOUT;
     this.proxy = options.proxy;
-    this.excludeParams = options.excludeParams || ['headers', 'authentication', 'route', 'connection', 'provider', 'authorization', 'host', 'content-length'];
+    this.excludeParams = options.excludeParams || ['headers', 'authentication', 'route', 'connection', 'provider', 'authorization', 'host', 'content-length', 'content-type'];
     this.maxRedirects = options.maxRedirects;
     this.keepAlive = options.keepAlive;
     this.internalRequestHeader = options.internalRequestHeader || INTERNAL_REQUEST_HEADER;
