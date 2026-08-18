@@ -16,9 +16,21 @@ const requester = new Requester({
 
 app.use('messages', new RemoteService('messages', requester));
 
-// Server side — before the body parser chain of the receiving application.
+// Server side — after the JSON body parser, before any multipart parser.
+app.use(express.json());
 app.use(remoteRequestMiddleware());
+// app.use(multer(...))
 ```
+
+### Where to register the middleware
+
+It has to sit **after** `express.json()`: the envelope of a normal call arrives in the
+request body, so the middleware needs `req.body` already parsed — registered any earlier,
+it finds nothing and every remote call falls through unprocessed.
+
+It has to sit **before** any multipart parser: on those requests the envelope travels in
+headers and the middleware deliberately leaves `req.body` alone, so the stream reaches
+`multer` (or whatever you use) intact.
 
 ## Options
 
