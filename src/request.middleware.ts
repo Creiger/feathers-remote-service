@@ -1,12 +1,56 @@
 import { Request, Response, NextFunction } from 'express';
 import {
   INTERNAL_REQUEST_HEADER,
+  INTERNAL_TYPE_HEADER,
+  INTERNAL_PARAMS_HEADER,
   AXIOS_HTTP_METHODS,
 } from './constants';
 
 interface FeathersRequest {
   feathers?: any
 }
+
+interface Envelope {
+  type: string;
+  params: any;
+  // Multipart requests carry their payload as the raw body, so it must be left for the
+  // application's own upload middleware to parse.
+  data?: any;
+  multipart: boolean;
+}
+
+const decodeParamsHeader = (value: any): any => {
+  if (typeof value !== 'string' || !value) { return {}; }
+
+  try {
+    return JSON.parse(Buffer.from(value, 'base64').toString('utf8')) || {};
+  } catch (error) {
+    return {};
+  }
+};
+
+const readEnvelope = (req: Request): Envelope | null => {
+  const typeHeader = req.headers[INTERNAL_TYPE_HEADER.toLowerCase()];
+
+  if (typeof typeHeader === 'string' && typeHeader) {
+    return {
+      type: typeHeader,
+      params: decodeParamsHeader(req.headers[INTERNAL_PARAMS_HEADER.toLowerCase()]),
+      multipart: true,
+    };
+  }
+
+  const body = req.body;
+
+  if (!body || !body.__type) { return null; }
+
+  return {
+    type: body.__type,
+    params: body.__params || {},
+    data: body.__data,
+    multipart: false,
+  };
+};
 
 export const remoteRequestMiddleware = () => {
   return (req: Request & FeathersRequest, res: Response, next: NextFunction) => {
@@ -16,15 +60,13 @@ export const remoteRequestMiddleware = () => {
       return next();
     }
 
-    const body = req.body;
+    const envelope = readEnvelope(req);
 
-    if (!body || !body.__type) {
+    if (!envelope) {
       return next();
     }
 
-    const type = body.__type;
-    const params = body.__params || {};
-    const data = body.__data;
+    const { type, params, data, multipart } = envelope;
 
     // Restore the original HTTP method so Feathers routes it correctly
     const originalMethod = AXIOS_HTTP_METHODS[type];
@@ -38,11 +80,14 @@ export const remoteRequestMiddleware = () => {
       delete params.query;
     }
 
-    // Restore data for methods that use body
-    if (data !== undefined) {
-      req.body = data;
-    } else {
-      req.body = {};
+    // Restore data for methods that use body. Multipart bodies are left untouched so the
+    // application's upload middleware still sees an intact stream.
+    if (!multipart) {
+      if (data !== undefined) {
+        req.body = data;
+      } else {
+        req.body = {};
+      }
     }
 
     // Set feathers params

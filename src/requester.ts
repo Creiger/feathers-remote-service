@@ -1,13 +1,21 @@
 import http from 'http';
 import https from 'https';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import axiosRetry from 'axios-retry';
 import errors from '@feathersjs/errors';
 import FormData from 'form-data';
 import {
   DEFAULT_PROTOCOL,
   DEFAULT_TIMEOUT,
+  DEFAULT_KEEP_ALIVE,
+  DEFAULT_KEEP_ALIVE_MSECS,
+  DEFAULT_FREE_SOCKET_TIMEOUT,
+  DEFAULT_MAX_SOCKETS,
+  DEFAULT_MAX_FREE_SOCKETS,
+  DEFAULT_MAX_INTERNAL_HEADER_SIZE,
   INTERNAL_REQUEST_HEADER,
+  INTERNAL_TYPE_HEADER,
+  INTERNAL_PARAMS_HEADER,
 } from './constants';
 
 export interface IRequestOptions {
@@ -23,6 +31,23 @@ export interface IRequestOptions {
   timeout: any;
 }
 
+/**
+ * Detects a multipart payload. Covers the form-data package (including a duplicate
+ * copy resolved elsewhere in node_modules) as well as the native FormData exposed
+ * by Node 18+, which the form-data instanceof check would miss.
+ */
+export function isFormData (value: any): boolean {
+  if (!value || typeof value !== 'object') { return false; }
+
+  if (value instanceof FormData) { return true; }
+
+  if (typeof value.getHeaders === 'function' && typeof value.getBoundary === 'function') { return true; }
+
+  const NativeFormData = (globalThis as any).FormData;
+
+  return typeof NativeFormData === 'function' && value instanceof NativeFormData;
+}
+
 export class Requester {
   private readonly protocol: any;
   private readonly host: any;
@@ -36,6 +61,11 @@ export class Requester {
   private readonly keepAlive: any;
   private readonly internalRequestHeader: any;
   private readonly responseType: any;
+  private readonly maxInternalHeaderSize: number;
+  private readonly httpAgent: any;
+  private readonly httpsAgent: any;
+  private readonly ownsAgents: boolean;
+  private readonly axios: AxiosInstance;
 
   constructor (options) {
     this.protocol = options.protocol || DEFAULT_PROTOCOL;
@@ -43,15 +73,39 @@ export class Requester {
     this.port = options.port;
     this.dnsSuffix = options.dnsSuffix || '';
     this.pathToHost = options.pathToHost === true ? this.getHostByPath : options.pathToHost;
-    this.timeout = options.timeout || DEFAULT_TIMEOUT;
+    this.timeout = options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT;
     this.proxy = options.proxy;
     this.excludeParams = options.excludeParams || ['headers', 'authentication', 'route', 'connection', 'provider', 'authorization', 'host', 'content-length', 'content-type'];
     this.maxRedirects = options.maxRedirects;
-    this.keepAlive = options.keepAlive;
+    this.keepAlive = options.keepAlive !== undefined ? options.keepAlive : DEFAULT_KEEP_ALIVE;
     this.internalRequestHeader = options.internalRequestHeader || INTERNAL_REQUEST_HEADER;
     this.responseType = options.responseType;
+    this.maxInternalHeaderSize = options.maxInternalHeaderSize !== undefined ? options.maxInternalHeaderSize : DEFAULT_MAX_INTERNAL_HEADER_SIZE;
 
-    if (options.retry) { axiosRetry(axios, options.retry); }
+    // Agents live for the lifetime of the requester; a per-request agent would never
+    // reuse a connection, which is what made keepAlive a no-op in 2.x.
+    this.ownsAgents = !options.httpAgent && !options.httpsAgent;
+    const agentOptions = {
+      keepAlive: this.keepAlive,
+      keepAliveMsecs: options.keepAliveMsecs !== undefined ? options.keepAliveMsecs : DEFAULT_KEEP_ALIVE_MSECS,
+      maxSockets: options.maxSockets !== undefined ? options.maxSockets : DEFAULT_MAX_SOCKETS,
+      maxFreeSockets: options.maxFreeSockets !== undefined ? options.maxFreeSockets : DEFAULT_MAX_FREE_SOCKETS,
+      scheduling: 'lifo' as const,
+      // Only applies to sockets sitting in the free pool; Node leaves sockets that are
+      // serving a request alone, so this never cuts a long-running call short.
+      timeout: this.keepAlive
+        ? (options.freeSocketTimeout !== undefined ? options.freeSocketTimeout : DEFAULT_FREE_SOCKET_TIMEOUT)
+        : undefined,
+    };
+
+    this.httpAgent = options.httpAgent || new http.Agent(agentOptions);
+    this.httpsAgent = options.httpsAgent || new https.Agent(agentOptions);
+
+    // Own axios instance: applying retry to the global one leaked interceptors into
+    // every other axios call in the host application and stacked them per requester.
+    this.axios = axios.create();
+
+    if (options.retry) { axiosRetry(this.axios, options.retry); }
   }
 
   async send (options) {
@@ -89,21 +143,34 @@ export class Requester {
       timeout: params.timeout !== undefined ? params.timeout : this.timeout,
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
+      httpAgent: this.httpAgent,
+      httpsAgent: this.httpsAgent,
     };
 
-    const body: any = {
-      __type: type,
-      __params: this.filterParams(params),
-    };
+    const filteredParams = this.filterParams(params);
+    let body: any;
 
-    if (data !== undefined) {
-      if (data instanceof FormData) {
+    if (isFormData(data)) {
+      // A multipart stream cannot be nested inside a JSON envelope, so the payload stays
+      // the raw multipart body and the envelope moves into headers. The remote side then
+      // parses it with its usual upload middleware.
+      body = data;
+      requestOptions.headers[INTERNAL_TYPE_HEADER] = type;
+      requestOptions.headers[INTERNAL_PARAMS_HEADER] = this.encodeParamsHeader(filteredParams);
+
+      if (typeof (data as any).getHeaders === 'function') {
         requestOptions.headers = {
           ...requestOptions.headers,
-          ...data.getHeaders(),
+          ...(data as any).getHeaders(),
         };
-        body.__data = data;
-      } else {
+      }
+    } else {
+      body = {
+        __type: type,
+        __params: filteredParams,
+      };
+
+      if (data !== undefined) {
         body.__data = data;
       }
     }
@@ -114,15 +181,34 @@ export class Requester {
     if (this.maxRedirects !== undefined) {
       requestOptions.maxRedirects = this.maxRedirects;
     }
-    requestOptions.httpAgent = new http.Agent({
-      keepAlive: this.keepAlive
-    });
-    requestOptions.httpsAgent = new https.Agent({
-      keepAlive: this.keepAlive
-    });
-    const result = await axios.post(url, body, requestOptions);
+
+    const result = await this.axios.post(url, body, requestOptions);
 
     return result.data;
+  }
+
+  encodeParamsHeader (params) {
+    const encoded = Buffer.from(JSON.stringify(params), 'utf8').toString('base64');
+
+    if (encoded.length > this.maxInternalHeaderSize) {
+      throw new errors.BadRequest(
+        `Params too large to send alongside a multipart body (${encoded.length} bytes, limit ${this.maxInternalHeaderSize}). ` +
+        'Reduce the params or extend excludeParams.'
+      );
+    }
+
+    return encoded;
+  }
+
+  /**
+   * Closes the pooled connections. Only affects agents this requester created; agents
+   * passed in through options stay under the caller's control.
+   */
+  destroy () {
+    if (!this.ownsAgents) { return; }
+
+    this.httpAgent.destroy();
+    this.httpsAgent.destroy();
   }
 
   validateProtocol (value) {
